@@ -1,0 +1,78 @@
+name: Build Flutter APK
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.2'
+          cache: true
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          
+      - name: Setup Android SDK & NDK
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y openjdk-17-jdk unzip
+
+          export ANDROID_HOME=$HOME/android-sdk
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          cd "$ANDROID_HOME/cmdline-tools"
+
+          curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip sdk-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+          rm sdk-tools.zip
+
+          # 必要ならフォルダをリネームして `latest/bin` を作成
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest" || true
+
+          chmod +x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "cmake;3.22.1" "ndk;27.0.12077973"
+      - name: Check working directory
+        run: pwd && ls -la
+        working-directory: my-flutter-app/my_flutter_app
+      
+      - name: Clean build
+        run: flutter clean
+        working-directory: my-flutter-app/my_flutter_app
+      
+      - name: Deps build
+        run: flutter pub deps
+        working-directory: my-flutter-app/my_flutter_app
+
+      - name: Get dependencies
+        run: flutter pub get
+        working-directory: my-flutter-app/my_flutter_app
+
+      - name: Build APK
+        run: flutter build apk --release --verbose -t lib/main-android.dart
+        working-directory: my-flutter-app/my_flutter_app
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: my-flutter-app/my_flutter_app/build/app/outputs/flutter-apk/app-release.apk
